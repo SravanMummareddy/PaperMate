@@ -9,6 +9,7 @@ export default function Home() {
       <div className="mt-4 border-4 border-blue-500 p-4 rounded-lg">
         If you see a thick blue border, Tailwind is active.
       </div>
+      <h1>JUST A TEST!!!!😁</h1>
     </main>
   );
 }
