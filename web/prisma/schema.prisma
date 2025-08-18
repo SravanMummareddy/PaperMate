@@ -1,0 +1,203 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/**
+ * ===== Enums (each value on its own line) =====
+ */
+enum ProductType {
+  RAW
+  FINISHED
+}
+
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  SHIPPED
+}
+
+enum POStatus {
+  DRAFT
+  PLACED
+  RECEIVED
+  PARTIAL
+}
+
+enum TxnType {
+  GRN
+  SHIP
+  PROD_OUT
+  PROD_CONS
+  ADJ
+}
+
+enum ProdStatus {
+  PLANNED
+  IN_PROGRESS
+  DONE
+}
+
+enum PaymentStatus {
+  PAID
+  UNPAID
+  PARTIAL
+}
+
+enum FinishedKind {
+  PLATE
+  SHEET
+  OTHER
+}
+
+/**
+ * ===== Tables (models) =====
+ */
+model Product {
+  id           Int           @id @default(autoincrement())
+  sku          String?       @unique
+  name         String
+  type         ProductType
+  // Only used when type = FINISHED; null for RAW
+  finishedKind FinishedKind?
+  size         String? // e.g., "8in", "10in", "12x12in"
+  uom          String
+  attributes   Json?         @default("{}")
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  inventoryTxns         InventoryTxn[]
+  salesOrderLines       SalesOrderLine[]
+  purchaseOrderLines    PurchaseOrderLine[]
+  productionConsumption ProductionConsumption[]
+  productionOutput      ProductionOutput[]
+}
+
+model Party {
+  id        Int       @id @default(autoincrement())
+  name      String
+  type      PartyType
+  whatsapp  String?
+  email     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  salesOrders    SalesOrder[]    @relation("Customer")
+  purchaseOrders PurchaseOrder[] @relation("Supplier")
+}
+
+model SalesOrder {
+  id         Int         @id @default(autoincrement())
+  customerId Int
+  orderDate  DateTime    @default(now())
+  status     OrderStatus @default(DRAFT)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  customer Party            @relation("Customer", fields: [customerId], references: [id])
+  lines    SalesOrderLine[]
+  payments Payment[]
+}
+
+model SalesOrderLine {
+  id        Int     @id @default(autoincrement())
+  soId      Int
+  productId Int
+  qty       Decimal @db.Decimal(14, 3)
+
+  so      SalesOrder @relation(fields: [soId], references: [id], onDelete: Cascade)
+  product Product    @relation(fields: [productId], references: [id])
+}
+
+model PurchaseOrder {
+  id         Int      @id @default(autoincrement())
+  supplierId Int
+  orderDate  DateTime @default(now())
+  status     POStatus @default(DRAFT)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  supplier Party               @relation("Supplier", fields: [supplierId], references: [id])
+  lines    PurchaseOrderLine[]
+}
+
+model PurchaseOrderLine {
+  id        Int      @id @default(autoincrement())
+  poId      Int
+  productId Int
+  qty       Decimal  @db.Decimal(14, 3)
+  unitCost  Decimal? @db.Decimal(14, 4)
+
+  po      PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id])
+}
+
+model InventoryTxn {
+  id        BigInt   @id @default(autoincrement())
+  txnType   TxnType
+  productId Int
+  qty       Decimal  @db.Decimal(14, 3) // + in, - out
+  warehouse String   @default("MAIN")
+  batchNo   String?
+  refTable  String?
+  refId     BigInt?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId, createdAt])
+}
+
+model ProductionOrder {
+  id        Int        @id @default(autoincrement())
+  status    ProdStatus @default(PLANNED)
+  notes     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  consumption ProductionConsumption[]
+  output      ProductionOutput[]
+}
+
+model ProductionConsumption {
+  id        Int     @id @default(autoincrement())
+  prodId    Int
+  productId Int
+  qty       Decimal @db.Decimal(14, 3)
+
+  prod    ProductionOrder @relation(fields: [prodId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+}
+
+model ProductionOutput {
+  id        Int     @id @default(autoincrement())
+  prodId    Int
+  productId Int
+  qty       Decimal @db.Decimal(14, 3)
+  batchNo   String?
+
+  prod    ProductionOrder @relation(fields: [prodId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+}
+
+model Payment {
+  id       Int           @id @default(autoincrement())
+  soId     Int
+  status   PaymentStatus @default(UNPAID)
+  amount   Decimal?      @db.Decimal(14, 2)
+  paidDate DateTime?
+
+  so SalesOrder @relation(fields: [soId], references: [id])
+}
